@@ -1,6 +1,7 @@
 // Capitis 미팅 손님 페이지(사용자 요청 2026-11-24): 이름을 적고 들어가 앱의 회의 화면과 같은 모양(어두운 무대 + 아래 조작 줄)으로 —
 // 마이크·카메라 켜기/끄기(꺼지면 빨강), 화면 공유, 나가기. 파일 공유·초대는 앱 회원만(사용자 결정 '회원 + 앱 없는 사람은 링크로 참여').
-// 입장권은 기능 담당의 서버 함수(JOIN_URL)에서 { code, name } → { url, token, title }. 거절·끊김은 받은 글 그대로 보인다(사용자 결정 'LiveKit 무료 상한만').
+// 입장권은 기능 담당의 서버 함수(JOIN_URL)에서 { code, name, password? } → { url, token, title }. 거절·끊김은 받은 글 그대로 보인다(사용자 결정 'LiveKit 무료 상한만').
+// 2026-11-24: 링크에 아이디가 없으면 아이디 칸(아이디·링크를 붙여 넣어도 됨), 비공개 회의면 비밀번호 칸(서버가 needsPassword 로 답할 때), 누가 녹화하면 '녹화 중 · 누가'.
 // LiveKit: 같은 폴더의 livekit-client.umd.js 2.24.1(Apache-2.0, 앱 ui/vendor 와 같은 파일).
 (function () {
   'use strict';
@@ -12,9 +13,9 @@
   const LANG_KEY = 'capitis.meet.lang'; // 고른 말(이 브라우저에만)
   const TEXT = {
     ko: {
-      title: '회의에 참여하기', name: '이름', namePlaceholder: '다른 참가자에게 보일 이름', join: '참여하기', again: '다시 참여하기', controls: '회의 조작',
+      title: '회의에 참여하기', name: '이름', code: '회의 아이디', codePlaceholder: 'abc-defg-hij 또는 받은 링크', password: '회의 비밀번호', needCode: '회의 아이디를 넣으세요.', needPassword: '비공개 회의입니다. 회의 비밀번호를 넣으세요.', recording: '녹화 중', namePlaceholder: '다른 참가자에게 보일 이름', join: '참여하기', again: '다시 참여하기', controls: '회의 조작',
       note: '카메라와 마이크는 들어간 뒤 켜고 끌 수 있습니다. 말한 내용은 회의록을 만들려고 주최자 쪽 Capitis 에서 글로 바뀝니다.',
-      noCode: '링크가 올바르지 않습니다. 받은 손님 링크를 그대로 여세요.', needName: '이름을 적으세요.', joining: '들어가는 중…',
+      needName: '이름을 적으세요.', joining: '들어가는 중…',
       joinFailed: '회의에 들어가지 못했습니다: ', connectFailed: '회의에 연결하지 못했습니다: ', reconnecting: '연결이 끊겨 다시 잇는 중…',
       mic: '마이크', micOff: '마이크 꺼짐', cam: '카메라', camOff: '카메라 꺼짐', screen: '화면 공유', stopScreen: '공유 멈추기', leave: '나가기',
       micFailed: '마이크를 켜지 못했습니다: ', camFailed: '카메라를 켜지 못했습니다: ', screenFailed: '화면을 공유하지 못했습니다: ',
@@ -24,9 +25,9 @@
       droppedTitle: '회의 연결이 끊겼습니다', dropped: 'LiveKit: ',
     },
     en: {
-      title: 'Join the meeting', name: 'Name', namePlaceholder: 'Name other people will see', join: 'Join', again: 'Join again', controls: 'Meeting controls',
+      title: 'Join the meeting', name: 'Name', code: 'Meeting ID', codePlaceholder: 'abc-defg-hij or the link you received', password: 'Meeting password', needCode: 'Enter the meeting ID.', needPassword: 'This is a private meeting. Enter the meeting password.', recording: 'Recording', namePlaceholder: 'Name other people will see', join: 'Join', again: 'Join again', controls: 'Meeting controls',
       note: 'You can turn your camera and mic on or off after joining. What you say is transcribed by the host\'s Capitis to write the minutes.',
-      noCode: 'This link is not valid. Open the guest link exactly as you received it.', needName: 'Enter your name.', joining: 'Joining…',
+      needName: 'Enter your name.', joining: 'Joining…',
       joinFailed: 'Couldn\'t join the meeting: ', connectFailed: 'Couldn\'t connect to the meeting: ', reconnecting: 'Connection lost — reconnecting…',
       mic: 'Mic', micOff: 'Mic off', cam: 'Camera', camOff: 'Camera off', screen: 'Share screen', stopScreen: 'Stop sharing', leave: 'Leave',
       micFailed: 'Couldn\'t turn the mic on: ', camFailed: 'Couldn\'t turn the camera on: ', screenFailed: 'Couldn\'t share the screen: ',
@@ -48,7 +49,7 @@
   const el = id => document.getElementById(id);
   let lang = pickLang();
   const say = key => TEXT[lang][key];
-  const code = decodeURIComponent(location.hash.slice(1));
+  const linkCode = decodeURIComponent(location.hash.slice(1)); // # 뒤 전부(아이디, 아이디.열쇠, 옛 32자리 — 기능 담당이 알아본다)
   let livekit = null;
   let room = null;
   let leaving = false;
@@ -101,6 +102,11 @@
   const initials = name => ([...name.trim()][0] || '?').toUpperCase();
   const everyone = () => [room.localParticipant, ...room.remoteParticipants.values()];
 
+  function showPassword(on) {
+    el('join-password').hidden = !on;
+    document.querySelector('label[for="join-password"]').hidden = !on;
+  }
+
   function show(view) {
     el('join').hidden = view !== 'join';
     el('room').hidden = view !== 'room';
@@ -108,12 +114,12 @@
   }
 
   /** 입장권: 서버 함수가 거절하면 받은 글(message·error 또는 본문) 그대로. */
-  async function ticket(name) {
-    const response = await fetch(JOIN_URL, { method: 'POST', headers: { 'content-type': 'application/json', ...JOIN_HEADERS }, body: JSON.stringify({ code, name }) });
+  async function ticket(code, name, password) {
+    const response = await fetch(JOIN_URL, { method: 'POST', headers: { 'content-type': 'application/json', ...JOIN_HEADERS }, body: JSON.stringify({ code, name, ...(password ? { password } : {}) }) });
     const text = await response.text();
     let body = null;
     try { body = JSON.parse(text); } catch (err) { body = null; }
-    if (!response.ok) throw new Error((body && (body.error || body.message)) || text || `HTTP ${response.status}`); // 기능 담당 약속: { error }
+    if (!response.ok) throw Object.assign(new Error((body && (body.error || body.message)) || text || `HTTP ${response.status}`), { needsPassword: Boolean(body && body.needsPassword) }); // 기능 담당 약속: { error, needsPassword? }
     return body;
   }
 
@@ -121,15 +127,24 @@
   async function join(event) {
     if (event) event.preventDefault();
     const name = el('join-name').value.trim();
-    if (!code) { status(say('noCode')); return; }
+    const typed = el('join-code').value.trim();
+    const code = linkCode || (typed.includes('#') ? decodeURIComponent(typed.slice(typed.indexOf('#') + 1)) : typed); // 링크를 붙여 넣어도 # 뒤만
+    if (!code) { status(say('needCode')); el('join-code').focus(); return; }
     if (!name) { status(say('needName')); el('join-name').focus(); return; }
+    const password = el('join-password').hidden ? '' : el('join-password').value;
     el('join-go').disabled = true;
     status(say('joining'));
     let pass;
     try {
-      pass = await ticket(name);
+      pass = await ticket(code, name, password);
     } catch (err) {
       el('join-go').disabled = false;
+      if (err && err.needsPassword) { // 비공개 회의: 비밀번호 칸을 보이고 서버 글(틀렸으면 틀렸다는 글)을 그대로
+        showPassword(true);
+        status(password ? String(err.message) : say('needPassword'));
+        el('join-password').focus();
+        return;
+      }
       status(say('joinFailed') + String((err && err.message) || err));
       return;
     }
@@ -160,7 +175,7 @@
   function bind() {
     const events = livekit.RoomEvent;
     [events.ParticipantConnected, events.ParticipantDisconnected, events.TrackSubscribed, events.TrackUnsubscribed, events.TrackMuted, events.TrackUnmuted,
-      events.LocalTrackPublished, events.LocalTrackUnpublished, events.ActiveSpeakersChanged].forEach(name => room.on(name, paint));
+      events.LocalTrackPublished, events.LocalTrackUnpublished, events.ActiveSpeakersChanged, events.ParticipantAttributesChanged].forEach(name => room.on(name, paint));
     room.on(events.TrackSubscribed, track => { if (track.kind === 'audio') el('audio').append(track.attach()); });
     room.on(events.TrackUnsubscribed, track => { if (track.kind === 'audio') track.detach().forEach(media => media.remove()); });
     room.on(events.Reconnecting, () => note(say('reconnecting')));
@@ -190,6 +205,9 @@
     el('screen').setAttribute('aria-pressed', String(Boolean(local.isScreenShareEnabled)));
     el('screen').classList.toggle('is-active', Boolean(local.isScreenShareEnabled));
     control(el('leave'), 'leave', say('leave'), false);
+    const recorders = everyone().filter(person => (person.attributes || {}).recording === 'yes').map(nameOf); // 회원이 녹화하면 손님에게도 알린다(사용자 결정)
+    el('room-recording').textContent = recorders.length ? `${say('recording')} · ${recorders.join(', ')}` : '';
+    el('room-recording').hidden = !recorders.length;
   }
   function control(target, name, label, off) {
     target.replaceChildren(icon(name, off), node('span', 'control-label', label));
@@ -287,5 +305,5 @@
     paintText();
   }));
   paintText();
-  if (!code) status(say('noCode'));
+  if (!linkCode) { el('join-code').hidden = false; document.querySelector('label[for="join-code"]').hidden = false; } // 링크에 아이디가 없으면 아이디 칸을
 })();

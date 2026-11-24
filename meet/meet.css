@@ -32,6 +32,9 @@ button { font: inherit; }
 .room-bar { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 16px; }
 .room-title { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .room-clock { color: var(--stage-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.room-recording { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; background: color-mix(in srgb, var(--off) 22%, transparent); color: #ffd0d1; font-size: 12px; font-weight: 700; }
+.room-recording::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+#join-code, #join-password { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
 .room-note { flex: 1; overflow: hidden; color: #ffcf8a; font-size: 13px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .stage { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: center; gap: 10px; min-height: 0; padding: 6px 16px 12px; overflow: auto; }
 .stage[data-count="1"] { grid-template-columns: minmax(0, 880px); justify-content: center; }
