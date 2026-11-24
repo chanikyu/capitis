@@ -1,0 +1,67 @@
+/* Capitis 미팅 손님 페이지 — 앱 회의 화면(style.css '미팅 탭')과 같은 색·모양: 어두운 무대 + 아래 조작 줄, 꺼짐은 빨강 하나. */
+:root {
+  --bg: #f4f3f0; --card: #ffffff; --text: #1d1c1a; --muted: #6f6b63; --line: #e2dfd8; --accent: #2f6fd6; --accent-text: #ffffff;
+  --stage-bg: #141417; --tile-bg: #26262c; --bar-bg: #1c1c21; --on-stage: #f4f4f6; --stage-muted: #a1a1ab; --off: #ef4a4f; --speaking: #3ecf8e; --share: #2f7cf6;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161615; --card: #201f1d; --text: #ecebe7; --muted: #9a968e; --line: #34332f; --accent: #8fb0f0; --accent-text: #10213f; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
+[hidden] { display: none !important; }
+button { font: inherit; }
+
+.join { display: grid; place-items: center; min-height: 100%; padding: 24px 16px; }
+.join-card { display: grid; gap: 10px; width: min(420px, 100%); padding: 28px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.brand { margin: 0; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+.join-card h1 { margin: 0 0 6px; font-size: 22px; }
+.field-name { color: var(--muted); font-size: 13px; font-weight: 600; }
+#join-name { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+#join-name:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.muted { margin: 0; color: var(--muted); font-size: 13px; }
+.primary { padding: 9px 16px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-text); font-weight: 600; cursor: pointer; }
+.primary:disabled { opacity: 0.55; cursor: default; }
+.status { min-height: 1.4em; margin: 0; color: var(--off); font-size: 13px; overflow-wrap: anywhere; }
+.lang { margin: 6px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
+.lang button { padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; }
+.lang button[aria-pressed="true"] { color: var(--text); font-weight: 700; }
+
+.room { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; background: var(--stage-bg); color: var(--on-stage); }
+.room-bar { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 16px; }
+.room-title { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.room-clock { color: var(--stage-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.room-note { flex: 1; overflow: hidden; color: #ffcf8a; font-size: 13px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.stage { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: center; gap: 10px; min-height: 0; padding: 6px 16px 12px; overflow: auto; }
+.stage[data-count="1"] { grid-template-columns: minmax(0, 880px); justify-content: center; }
+.stage.has-screen { grid-template-columns: minmax(0, 1fr) 200px; grid-auto-rows: min-content; align-content: start; }
+.stage.has-screen .tile { grid-column: 2; }
+.stage.has-screen .tile.is-screen { grid-column: 1; grid-row: 1 / span 8; aspect-ratio: auto; min-height: 55vh; }
+.tile { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 12px; background: var(--tile-bg); }
+.tile video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tile.is-screen video { object-fit: contain; background: #000; }
+.tile.is-mirror video { transform: scaleX(-1); }
+.tile.is-video-off video { display: none; }
+.tile.is-speaking { box-shadow: inset 0 0 0 3px var(--speaking); }
+.avatar { display: none; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: color-mix(in srgb, var(--share) 55%, #444); color: #fff; font-size: 28px; font-weight: 700; }
+.tile.is-video-off .avatar { display: grid; position: absolute; inset: 0; margin: auto; }
+.tile-label { position: absolute; left: 8px; bottom: 8px; display: flex; align-items: center; gap: 5px; max-width: calc(100% - 16px); padding: 3px 9px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); font-size: 12px; }
+.tile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-label .icon { width: 15px; height: 15px; flex-shrink: 0; color: var(--off); }
+.icon { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.controls { display: flex; align-items: center; gap: 4px; padding: 8px 16px 10px; background: var(--bar-bg); }
+.controls-gap { flex: 1; }
+.control { display: grid; justify-items: center; gap: 3px; min-width: 72px; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--on-stage); font-size: 12px; cursor: pointer; }
+.control .icon { width: 22px; height: 22px; }
+.control:hover { background: rgba(255, 255, 255, 0.08); }
+.control:focus-visible { outline: 2px solid var(--share); outline-offset: 1px; }
+.control.is-off { background: color-mix(in srgb, var(--off) 18%, transparent); color: var(--off); font-weight: 700; }
+.control.is-active { background: var(--share); color: #fff; }
+.control.is-leave { background: var(--off); color: #fff; font-weight: 700; }
+@media (max-width: 520px) {
+  .control { min-width: 0; flex: 1; }
+  .controls-gap { display: none; }
+  .stage { grid-template-columns: 1fr; }
+}
