@@ -63,6 +63,12 @@ button { font: inherit; }
 .control.is-off { background: color-mix(in srgb, var(--off) 18%, transparent); color: var(--off); font-weight: 700; }
 .control.is-active { background: var(--share); color: #fff; }
 .control.is-leave { background: var(--off); color: #fff; font-weight: 700; }
+/* 화면 공유 고르기(2026-11-25 — 앱 .meet-share-menu 와 같은 꼴): [화면 공유] 바로 위 작은 메뉴, 자리(left·top)는 meet.js openShareMenu */
+.share-menu { position: fixed; z-index: 60; display: grid; gap: 2px; min-width: 230px; padding: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; background: var(--bar-bg); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.share-item { display: grid; gap: 2px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--on-stage); font: inherit; text-align: left; cursor: pointer; }
+.share-item:hover, .share-item:focus-visible { background: rgba(255, 255, 255, 0.1); outline: none; }
+.share-label { font-weight: 600; font-size: 14px; }
+.share-hint { color: var(--stage-muted); font-size: 12px; }
 @media (max-width: 520px) {
   .control { min-width: 0; flex: 1; }
   .controls-gap { display: none; }

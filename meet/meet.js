@@ -18,6 +18,8 @@
       needName: '이름을 적으세요.', joining: '들어가는 중…',
       joinFailed: '회의에 들어가지 못했습니다: ', connectFailed: '회의에 연결하지 못했습니다: ', reconnecting: '연결이 끊겨 다시 잇는 중…',
       mic: '마이크', micOff: '마이크 꺼짐', cam: '카메라', camOff: '카메라 꺼짐', screen: '화면 공유', stopScreen: '공유 멈추기', leave: '나가기',
+      sharePicking: '공유할 것을 고르는 중…', shareNotStarted: '화면 공유를 시작하지 않았습니다(고르기를 닫았거나 허락되지 않았습니다).',
+      shareMenu: '화면 공유 고르기', shareScreen: '전체 화면', shareScreenHint: '화면 전체가 그대로 보입니다.', shareWindow: '창 하나 고르기', shareWindowHint: '고른 창 하나만 보입니다.',
       micFailed: '마이크를 켜지 못했습니다: ', camFailed: '카메라를 켜지 못했습니다: ', screenFailed: '화면을 공유하지 못했습니다: ',
       denied: '권한이 없습니다. 브라우저 주소 줄 옆의 권한 설정에서 허용하세요.', noScreen: '이 브라우저에서는 화면 공유를 쓸 수 없습니다.',
       me: '나', guest: '손님', screenOf: ' 님의 화면', noName: '이름 없음',
@@ -30,6 +32,8 @@
       needName: 'Enter your name.', joining: 'Joining…',
       joinFailed: 'Couldn\'t join the meeting: ', connectFailed: 'Couldn\'t connect to the meeting: ', reconnecting: 'Connection lost — reconnecting…',
       mic: 'Mic', micOff: 'Mic off', cam: 'Camera', camOff: 'Camera off', screen: 'Share screen', stopScreen: 'Stop sharing', leave: 'Leave',
+      sharePicking: 'Choosing what to share…', shareNotStarted: 'Screen sharing didn\'t start (the picker was closed or permission was denied).',
+      shareMenu: 'Choose what to share', shareScreen: 'Full screen', shareScreenHint: 'Everyone sees your whole screen.', shareWindow: 'Choose a window', shareWindowHint: 'Everyone sees only the window you pick.',
       micFailed: 'Couldn\'t turn the mic on: ', camFailed: 'Couldn\'t turn the camera on: ', screenFailed: 'Couldn\'t share the screen: ',
       denied: 'Permission denied. Allow it in the site permissions next to the address bar.', noScreen: 'Screen sharing isn\'t available in this browser.',
       me: 'Me', guest: 'Guest', screenOf: '\'s screen', noName: 'No name',
@@ -174,7 +178,8 @@
   /** 방 사건을 화면에: 사람·트랙이 바뀌면 다시 그리기, 남의 소리 틀기, 끊김(주최자가 끝냄·그 밖). */
   function bind() {
     const events = livekit.RoomEvent;
-    [events.ParticipantConnected, events.ParticipantDisconnected, events.TrackSubscribed, events.TrackUnsubscribed, events.TrackMuted, events.TrackUnmuted,
+    // TrackPublished·TrackUnpublished: 남이 화면 공유를 내리면 그 칸을 지운다(앱 meeting-room.js 와 같게 — 없으면 빈 검은 칸이 남았다)
+    [events.ParticipantConnected, events.ParticipantDisconnected, events.TrackPublished, events.TrackUnpublished, events.TrackSubscribed, events.TrackUnsubscribed, events.TrackMuted, events.TrackUnmuted,
       events.LocalTrackPublished, events.LocalTrackUnpublished, events.ActiveSpeakersChanged, events.ParticipantAttributesChanged].forEach(name => room.on(name, paint));
     room.on(events.TrackSubscribed, track => { if (track.kind === 'audio') el('audio').append(track.attach()); });
     room.on(events.TrackUnsubscribed, track => { if (track.kind === 'audio') track.detach().forEach(media => media.remove()); });
@@ -263,13 +268,69 @@
     try { await room.localParticipant.setCameraEnabled(on); } catch (err) { note(say('camFailed') + reason(err)); }
     paint();
   }
-  /** [화면 공유]: 켜기·끄기(고르기 창 취소는 조용히). */
+  /** [화면 공유]: 켜기는 무엇을 보일지 먼저 고른다(아래 고르기 메뉴 — 떠 있으면 다시 누름은 닫기), 끄기는 바로. */
   async function toggleScreen() {
     const turnOn = !room.localParticipant.isScreenShareEnabled;
     if (turnOn && !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) { note(say('noScreen')); return; }
-    try { await room.localParticipant.setScreenShareEnabled(turnOn); } catch (err) { if (!err || (err.name !== 'NotAllowedError' && err.name !== 'AbortError')) note(say('screenFailed') + reason(err)); }
+    if (turnOn) { if (shareMenu) closeShareMenu(); else openShareMenu(); return; }
+    try { await room.localParticipant.setScreenShareEnabled(false); } catch (err) { note(say('screenFailed') + reason(err)); }
     paint();
   }
+
+  // 화면 공유 고르기(사용자 요청 2026-11-25 '공유도 전체화면 말고 선택화면이 있어야' — 앱 meeting-room.js 와 같은 규칙).
+  // surface 는 브라우저 고르기 창이 처음 보일 쪽 힌트(displaySurface — LiveKit 이 video 객체를 그대로 getDisplayMedia 제약에 넣음).
+  const SHARE_KINDS = [{ kind: 'screen', surface: 'monitor', label: 'shareScreen', hint: 'shareScreenHint' }, { kind: 'window', surface: 'window', label: 'shareWindow', hint: 'shareWindowHint' }];
+  const SHARE_MENU_GAP_PX = 6; // 메뉴와 단추 사이
+  const SHARE_MENU_EDGE_PX = 8; // 창 오른쪽 끝에서 띄울 거리
+  // 화면 공유 크기(사용자 답 2026-11-25 '올리기' — 앱 meeting-room.js SCREEN_CAPTURE_SIZE·SCREEN_MAX 와 같은 규칙·근거):
+  // 잡을 때는 크기 제약 없이(Safari 는 잡기 전 기본 640×480 범위로 풀어 640×400 으로 굳음), 시작된 뒤 최대 1920×1080·30fps 로 줄인다.
+  const SCREEN_CAPTURE_SIZE = { width: 0, height: 0 };
+  const SCREEN_MAX = { width: { max: 1920 }, height: { max: 1080 }, frameRate: { max: 30 } };
+  let shareMenu = null;
+  function closeShareMenu() {
+    if (!shareMenu) return;
+    shareMenu.remove();
+    shareMenu = null;
+    el('screen').setAttribute('aria-expanded', 'false');
+  }
+  /** 고르기 메뉴를 [화면 공유] 단추 위에 띄우고 첫 항목에 초점. */
+  function openShareMenu() {
+    const menu = node('div', 'share-menu');
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', say('shareMenu'));
+    SHARE_KINDS.forEach(choice => {
+      const item = node('button', 'share-item');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.dataset.kind = choice.kind;
+      item.append(node('span', 'share-label', say(choice.label)), node('span', 'share-hint', say(choice.hint)));
+      item.addEventListener('click', () => { closeShareMenu(); startScreen(choice); });
+      menu.append(item);
+    });
+    el('room').append(menu);
+    const spot = el('screen').getBoundingClientRect();
+    menu.style.left = `${Math.round(Math.min(spot.left, window.innerWidth - menu.offsetWidth - SHARE_MENU_EDGE_PX))}px`;
+    menu.style.top = `${Math.round(spot.top - menu.offsetHeight - SHARE_MENU_GAP_PX)}px`;
+    el('screen').setAttribute('aria-expanded', 'true');
+    shareMenu = menu;
+    menu.querySelector('button').focus();
+  }
+  /** 고른 쪽으로 공유 시작(고르기 창 취소는 조용히). */
+  async function startScreen(choice) {
+    note(say('sharePicking'));
+    try { await room.localParticipant.setScreenShareEnabled(true, { resolution: SCREEN_CAPTURE_SIZE, video: { displaySurface: choice.surface } }); await capScreenSize(); note(''); }
+    catch (err) { note(err && (err.name === 'NotAllowedError' || err.name === 'AbortError') ? say('shareNotStarted') : say('screenFailed') + reason(err)); } // 조용히 삼키지 않는다(앱과 같게)
+    if (room) paint();
+  }
+  /** 공유가 시작된 뒤 화면 크기를 최대 1920×1080 으로. 줄이지 못해도 공유는 원래 크기로 그대로 간다. */
+  async function capScreenSize() {
+    const pub = room && room.localParticipant.getTrackPublication(livekit.Track.Source.ScreenShare);
+    const track = pub && pub.track && pub.track.mediaStreamTrack;
+    if (!track) return;
+    try { await track.applyConstraints(SCREEN_MAX); } catch (err) { /* 줄이기만 못 한 것 — 공유는 계속된다 */ }
+  }
+  document.addEventListener('click', event => { if (shareMenu && !shareMenu.contains(event.target) && !el('screen').contains(event.target)) closeShareMenu(); }); // 메뉴 밖을 누르면 닫기
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && shareMenu) { closeShareMenu(); el('screen').focus(); } });
 
   async function leave() {
     if (!room) return;
@@ -281,6 +342,7 @@
   /** 회의 화면을 치우고 끝 화면: 나감 · 주최자가 끝냄 · 끊김(LiveKit 까닭 이름 그대로). */
   function finish(kind, why = '') {
     clearInterval(clock);
+    closeShareMenu(); // 고르기 메뉴가 떠 있던 채로 끝나면 다음 참여에 남지 않게
     tiles.forEach(tile => { if (tile.track) tile.track.detach(tile.video); });
     tiles.clear();
     el('stage').replaceChildren();
